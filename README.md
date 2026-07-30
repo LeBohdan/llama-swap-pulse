@@ -26,13 +26,13 @@ The service connects to `llama-swap`'s live upstream logs, parses `llama.cpp` ru
 ## Usage
 
 ```bash
-LLAMA_SWAP_URL=http://localhost:8080 SERVER_LISTEN=:8090 ./llama-swap-pulse
+LLAMA_SWAP_URL=http://localhost:8080 SERVER_LISTEN=:8090 ./dist/llama-swap-pulse
 ```
 
 Or with a config file:
 
 ```bash
-./llama-swap-pulse -config config.yaml
+./dist/llama-swap-pulse -config config.yaml
 ```
 
 ### Configuration
@@ -76,7 +76,7 @@ Quick reference:
 ## Building
 
 ```bash
-go build -o llama-swap-pulse ./cmd
+go build -o dist/llama-swap-pulse ./cmd
 ```
 
 ## License

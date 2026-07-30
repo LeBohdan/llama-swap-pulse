@@ -2,11 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY="$SCRIPT_DIR/llama-swap-pulse"
+BINARY="$SCRIPT_DIR/dist/llama-swap-pulse"
 
 if [ ! -f "$BINARY" ]; then
   echo "Error: binary not found at $BINARY"
-  echo "Build first: go build -o $BINARY ./cmd"
+  echo "Build first: ./build.sh"
   exit 1
 fi
 
