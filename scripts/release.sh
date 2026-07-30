@@ -86,6 +86,5 @@ gh release create "$TAG" "${ASSETS[@]}" \
   --target "$(git rev-parse HEAD)" \
   --generate-notes
 
-echo "Done: published release $TAG"
-
-</content>, 
+echo "Done: published release $TAG
+"
