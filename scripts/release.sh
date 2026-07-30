@@ -68,6 +68,7 @@ for PLATFORM in "${PLATFORMS[@]}"; do
   [ "$OS" = "windows" ] && SRC="${SRC}.exe"
   cp "$SRC" "${DIST_DIR}/pkg-${OS}-${ARCH}/"
   cp -r "${ROOT}/deploy" "${DIST_DIR}/pkg-${OS}-${ARCH}/"
+  cp "${ROOT}/README.md" "${DIST_DIR}/pkg-${OS}-${ARCH}/"
 
   tar -C "${DIST_DIR}/pkg-${OS}-${ARCH}" -czf "$TAR" .
   rm -rf "${DIST_DIR}/pkg-${OS}-${ARCH}"
@@ -82,7 +83,11 @@ for PLATFORM in "${PLATFORMS[@]}"; do
   ASSETS+=("${DIST_DIR}/${BINARY}-${OS}-${ARCH}.tar.gz")
 done
 
-gh release create "$TAG" "${ASSETS[@]}" \
+gh release create "$TAG" \
+  "${ASSETS[@]}" \
+  "${ROOT}/README.md" \
+  "${ROOT}/deploy/config.example" \
+  "${ROOT}/deploy/llama-swap-pulse.service" \
   --target "$(git rev-parse HEAD)" \
   --generate-notes
 
