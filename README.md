@@ -63,7 +63,7 @@ Environment variable overrides:
 
 All endpoints are prefixed with `/pulse`.
 
-For full API documentation — endpoint schemas, event types, SSE behavior, task lifecycle, and CORS — see [API.md](API.md).
+For full API documentation — endpoint schemas, event types, SSE behavior, task lifecycle, and CORS — see [docs/api.md](docs/api.md).
 
 Quick reference:
 

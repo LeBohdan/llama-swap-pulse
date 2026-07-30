@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY="$SCRIPT_DIR/dist/llama-swap-pulse"
+BINARY="$SCRIPT_DIR/../dist/llama-swap-pulse"
 
 if [ ! -f "$BINARY" ]; then
   echo "Error: binary not found at $BINARY"
