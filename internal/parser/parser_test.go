@@ -216,8 +216,8 @@ func TestSlotSelectionLCP(t *testing.T) {
 	if ev.Slot != 0 {
 		t.Errorf("expected slot=0, got %d", ev.Slot)
 	}
-	if ev.SimBest != 1.000 {
-		t.Errorf("expected sim_best=1.000, got %f", ev.SimBest)
+	if ev.Keep != 1.000 {
+		t.Errorf("expected keep=1.000, got %f", ev.Keep)
 	}
 }
 
@@ -230,8 +230,22 @@ func TestSlotSelectionLCPSimBest(t *testing.T) {
 	if ev.Type != "slot_selected" {
 		t.Errorf("expected type slot_selected, got %s", ev.Type)
 	}
-	if ev.SimBest != 0.965 {
-		t.Errorf("expected sim_best=0.965, got %f", ev.SimBest)
+	if ev.Keep != 0.960 {
+		t.Errorf("expected keep=0.960, got %f", ev.Keep)
+	}
+}
+
+func TestSlotSelectionLCPNewFormat(t *testing.T) {
+	p := New()
+	ev, ok := p.ParseLine("249.05.151.259 I slot get_availabl: id  0 | task -1 | selected slot by LCP similarity, f_sim_best = 0.406 (> 0.100 thold), f_keep = 0.384")
+	if !ok {
+		t.Fatal("expected ok=true for slot selection with LCP (new format)")
+	}
+	if ev.Type != "slot_selected" {
+		t.Errorf("expected type slot_selected, got %s", ev.Type)
+	}
+	if ev.Keep != 0.384 {
+		t.Errorf("expected keep=0.384, got %f", ev.Keep)
 	}
 }
 

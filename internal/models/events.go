@@ -19,7 +19,7 @@ type MetricEvent struct {
 	PromptEvalMs      float64 `json:"prompt_eval_ms,omitempty"`
 	Progress          float64 `json:"progress,omitempty"`
 
-	SimBest           float64 `json:"sim_best,omitempty"`
+	Keep              float64 `json:"keep,omitempty"`
 	GeneratedTokens   int     `json:"generated_tokens,omitempty"`
 	GenerationTPS     float64 `json:"generation_tps,omitempty"`
 	GenerationTPS3s   float64 `json:"generation_tps_3s,omitempty"`

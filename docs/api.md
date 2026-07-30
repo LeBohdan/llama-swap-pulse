@@ -105,7 +105,7 @@ Returns current state of all tracked tasks.
 | `prompt_eval_ms` | `float` | Total prompt evaluation time in ms (omitted if not available) |
 | `total_ms` | `float` | Total wall-clock time in ms (omitted if not available) |
 | `total_tokens` | `int` | Total tokens (prompt + generated) (omitted if not available) |
-| `sim_best` | `float` | LCP similarity score of selected slot (omitted if not available) |
+| `keep` | `float` | Fraction of prompt kept (restored) from previous slot (omitted if not available) |
 | `progress` | `float` | Fraction 0.0–1.0 of generation progress (omitted if not available) |
 | `graphs_reused` | `int` | Number of cached graph reuses (omitted if not available) |
 | `truncated` | `int` | Truncation flag (omitted if not available) |
@@ -159,14 +159,14 @@ Finished or cancelled tasks are removed from the snapshot after **60s** (configu
 
 ### `slot_selected`
 
-Triggered when a slot is selected by LCP similarity for a new task. Reports the similarity score (`sim_best`).
+Triggered when a slot is selected by LCP similarity for a new task. Reports the fraction of prompt kept (`keep`).
 
 ```json
 {
   "type": "slot_selected",
   "slot": 0,
   "task": -1,
-  "sim_best": 0.965,
+  "keep": 0.384,
   "timestamp": "2025-07-24T12:29:59Z"
 }
 ```
@@ -283,6 +283,7 @@ All events share this struct. Fields marked `omitempty` may be absent depending 
 | `total_tokens` | `int` | Prompt + generated token count |
 | `graphs_reused` | `int` | Cached graph reuse count |
 | `truncated` | `int` | Truncation flag |
+| `keep` | `float` | Fraction of prompt kept (restored) from previous slot |
 | `n_tokens` | `int` | Token count from llama.cpp |
 | `timestamp` | `string` | ISO 8601 timestamp |
 

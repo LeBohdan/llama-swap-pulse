@@ -265,7 +265,7 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 			}
 			s.tasks[key] = state
 		}
-		state.SimBest = ev.SimBest
+		state.Keep = ev.Keep
 		state.UpdatedAt = ev.Timestamp
 		s.currentTaskKey = key
 		return true

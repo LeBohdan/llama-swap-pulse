@@ -39,7 +39,7 @@ var (
 
 	reGraphsReused = regexp.MustCompile(`graphs reused\s*=\s*(\d+)`)
 
-	reSimBest = regexp.MustCompile(`sim_best\s*=\s*([\d.]+)`)
+	reKeep = regexp.MustCompile(`f_keep\s*=\s*([\d.]+)`)
 
 	reStopTokens   = regexp.MustCompile(`stop processing.*n_tokens\s*=\s*(\d+)`)
 	reTruncated    = regexp.MustCompile(`truncated\s*=\s*(\d+)`)
@@ -278,16 +278,16 @@ func (p *Parser) parseSlotSelection(body string, now time.Time) (*models.MetricE
 		return nil, false
 	}
 
-	simBest := 0.0
-	if m := reSimBest.FindStringSubmatch(body); m != nil {
-		simBest, _ = strconv.ParseFloat(m[1], 64)
+	keep := 0.0
+	if m := reKeep.FindStringSubmatch(body); m != nil {
+		keep, _ = strconv.ParseFloat(m[1], 64)
 	}
 
 	return &models.MetricEvent{
-		Type:    "slot_selected",
-		Slot:    slot,
-		Task:    -1,
-		SimBest: simBest,
+		Type:      "slot_selected",
+		Slot:      slot,
+		Task:      -1,
+		Keep:      keep,
 		Timestamp: now,
 	}, true
 }

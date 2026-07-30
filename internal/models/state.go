@@ -21,7 +21,7 @@ type TaskState struct {
 	PromptEvalMs     float64   `json:"prompt_eval_ms,omitempty"`
 	TotalMs          float64   `json:"total_ms,omitempty"`
 	TotalTokens      int       `json:"total_tokens,omitempty"`
-	SimBest          float64   `json:"sim_best,omitempty"`
+	Keep             float64   `json:"keep,omitempty"`
 	Progress         float64   `json:"progress,omitempty"`
 	GraphsReused     int       `json:"graphs_reused,omitempty"`
 	Truncated        int       `json:"truncated,omitempty"`
