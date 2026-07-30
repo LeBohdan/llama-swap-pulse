@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"llama-swap-pulse/internal/api"
+	"llama-swap-pulse/internal/config"
 	"llama-swap-pulse/internal/llama"
 	"llama-swap-pulse/internal/metrics"
 	"llama-swap-pulse/internal/parser"
-	"llama-swap-pulse/internal/config"
+	"llama-swap-pulse/internal/version"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
-	log.Info("starting llama-swap-pulse v1.0")
+	log.Info("starting llama-swap-pulse", "version", version.Version)
 	log.Info("config loaded", "listen", cfg.Server.Listen, "llama_swap_url", cfg.LlamaSwap.URL)
 
 	ctx, cancel := context.WithCancel(context.Background())

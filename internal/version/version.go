@@ -2,6 +2,7 @@
 // Website: https://www.bf.com.ua
 // GitHub: https://github.com/LeBohdan
 
-module llama-swap-pulse
+package version
 
-go 1.23.0
+// Version is the current version of the service.
+var Version = "1.1"
