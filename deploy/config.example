@@ -1,0 +1,14 @@
+# Llama Swap Pulse Configuration
+
+server:
+  listen: :8090
+
+llama_swap:
+  url: http://localhost:8080
+
+logging:
+  level: info
+
+metrics:
+  ttl: 60s
+  active_ttl: 10m

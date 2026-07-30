@@ -1,0 +1,21 @@
+[Unit]
+Description=Llama Swap Pulse Metrics Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/llama-swap-pulse -config /etc/llama-swap-pulse/config
+Restart=on-failure
+RestartSec=5
+
+Environment=SERVER_LISTEN=:8090
+Environment=LLAMA_SWAP_URL=http://localhost:8080
+Environment=LOGGING_LEVEL=info
+Environment=METRICS_TTL=60s
+Environment=METRICS_ACTIVE_TTL=10m
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
