@@ -4,7 +4,7 @@ GitHub: https://github.com/LeBohdan -->
 
 # llama-swap-pulse
 
-Version: 1.0
+Version: 1.3
 
 A standalone telemetry bridge between `llama-swap` and external clients such as OpenCode plugins.
 
@@ -78,6 +78,45 @@ Quick reference:
 ```bash
 go build -o dist/llama-swap-pulse ./cmd
 ```
+
+## Installation as a Service
+
+### Build and install binary
+
+```bash
+go build -o dist/llama-swap-pulse ./cmd
+sudo install -m 755 dist/llama-swap-pulse /usr/local/bin/llama-swap-pulse
+```
+
+### Create config directory
+
+```bash
+sudo mkdir -p /etc/llama-swap-pulse
+# Copy your config file there, or rely on Environment vars in the unit file
+```
+
+### Install and enable systemd service
+
+```bash
+sudo cp deploy/llama-swap-pulse.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable llama-swap-pulse
+sudo systemctl start llama-swap-pulse
+```
+
+### Verify
+
+```bash
+sudo systemctl status llama-swap-pulse
+sudo journalctl -u llama-swap-pulse -f
+```
+
+The unit file (`deploy/llama-swap-pulse.service`) is pre-configured with:
+- `Restart=on-failure` (5s delay)
+- All config as `Environment` variables
+- Binary path: `/usr/local/bin/llama-swap-pulse`
+- Config path: `/etc/llama-swap-pulse/config`
+- Logs to `journalctl`
 
 ## License
 

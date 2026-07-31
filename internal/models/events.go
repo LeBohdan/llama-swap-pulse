@@ -20,6 +20,7 @@ type MetricEvent struct {
 	Progress          float64 `json:"progress,omitempty"`
 
 	Keep              float64 `json:"keep,omitempty"`
+	Sim               float64 `json:"sim,omitempty"`
 	GeneratedTokens   int     `json:"generated_tokens,omitempty"`
 	GenerationTPS     float64 `json:"generation_tps,omitempty"`
 	GenerationTPS3s   float64 `json:"generation_tps_3s,omitempty"`
