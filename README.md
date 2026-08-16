@@ -4,7 +4,7 @@ GitHub: https://github.com/LeBohdan -->
 
 # llama-swap-pulse
 
-Version: 1.3
+Version: 1.4
 
 A standalone telemetry bridge between `llama-swap` and external clients such as OpenCode plugins.
 
