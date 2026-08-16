@@ -24,6 +24,7 @@ var (
 	rePromptTPS    = regexp.MustCompile(`t\s*=\s*[\d.]+\s+s\s*/\s*([\d.]+)\s*tokens per second`)
 
 	reNDecoded    = regexp.MustCompile(`n_decoded\s*=\s*(\d+)`)
+	reNGen        = regexp.MustCompile(`n_gen\s*=\s*(\d+)`)
 	reTps         = regexp.MustCompile(`tg\s*=\s*([\d.]+)\s*t/s`)
 	reTps3s       = regexp.MustCompile(`tg_3s\s*=\s*([\d.]+)\s*t/s`)
 
@@ -167,12 +168,14 @@ func (p *Parser) parsePrintTiming(body string, slot, task int, now time.Time) (*
 		return ev, true
 	}
 
-	if strings.Contains(body, "n_decoded") {
+	if strings.Contains(body, "n_decoded") || strings.Contains(body, "n_gen") {
 		genTok := 0
 		genTPS := 0.0
 		genTPS3s := 0.0
 
-		if m := reNDecoded.FindStringSubmatch(body); m != nil {
+		if m := reNGen.FindStringSubmatch(body); m != nil {
+			genTok, _ = strconv.Atoi(m[1])
+		} else if m := reNDecoded.FindStringSubmatch(body); m != nil {
 			genTok, _ = strconv.Atoi(m[1])
 		}
 		if m := reTps.FindStringSubmatch(body); m != nil {

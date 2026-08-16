@@ -97,6 +97,32 @@ func TestGenerationProgressNoTps3s(t *testing.T) {
 	}
 }
 
+func TestGenerationProgressNGen(t *testing.T) {
+	p := New()
+	ev, ok := p.ParseLine("50.52.171.635 I slot print_timing: id  0 | task 19166 | n_gen =    100, tg =  21.29 t/s, tg_3s =  21.51 t/s")
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	if ev.Type != "generation_progress" {
+		t.Errorf("expected type generation_progress, got %s", ev.Type)
+	}
+	if ev.Slot != 0 {
+		t.Errorf("expected slot=0, got %d", ev.Slot)
+	}
+	if ev.Task != 19166 {
+		t.Errorf("expected task=19166, got %d", ev.Task)
+	}
+	if ev.GeneratedTokens != 100 {
+		t.Errorf("expected generated_tokens=100, got %d", ev.GeneratedTokens)
+	}
+	if ev.GenerationTPS != 21.29 {
+		t.Errorf("expected generation_tps=21.29, got %f", ev.GenerationTPS)
+	}
+	if ev.GenerationTPS3s != 21.51 {
+		t.Errorf("expected generation_tps_3s=21.51, got %f", ev.GenerationTPS3s)
+	}
+}
+
 func TestPromptEvalTiming(t *testing.T) {
 	p := New()
 	ev, ok := p.ParseLine("9.40.082.210 I slot print_timing: id  0 | task 0 | prompt eval time = 464238.39 ms / 80651 tokens (5.76 ms per token, 173.73 tokens per second)")

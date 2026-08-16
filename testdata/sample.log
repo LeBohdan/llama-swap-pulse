@@ -697,3 +697,10 @@
 38.17.168.576 I slot print_timing: id  0 | task 15552 |       total time =   42293.28 ms /  1070 tokens
 38.17.168.577 I slot print_timing: id  0 | task 15552 |    graphs reused =      15953
 38.17.169.582 I slot      release: id  0 | task 15552 | stop processing: n_tokens = 23924, truncated = 0
+50.46.393.198 I slot launch_slot_: id  0 | task 19166 | processing task, is_child = 0
+50.52.171.635 I slot print_timing: id  0 | task 19166 | n_gen =    100, tg =  21.29 t/s, tg_3s =  21.51 t/s
+50.55.226.907 I slot print_timing: id  0 | task 19166 | n_gen =    163, tg =  21.03 t/s, tg_3s =  20.62 t/s
+50.58.283.728 I slot print_timing: id  0 | task 19166 | n_gen =    228, tg =  21.09 t/s, tg_3s =  21.26 t/s
+51.01.334.039 I slot print_timing: id  0 | task 19166 | n_gen =    289, tg =  20.85 t/s, tg_3s =  20.00 t/s
+51.04.405.678 I slot print_timing: id  0 | task 19166 | n_gen =    360, tg =  21.26 t/s, tg_3s =  23.11 t/s
+51.07.471.075 I slot print_timing: id  0 | task 19166 | n_gen =    442, tg =  22.11 t/s, tg_3s =  26.75 t/s
