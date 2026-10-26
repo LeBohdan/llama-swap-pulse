@@ -6,6 +6,7 @@ package metrics
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -20,6 +21,7 @@ const (
 type Store struct {
 	mu             sync.RWMutex
 	tasks          map[string]*models.TaskState
+	upstreams      map[string]*models.UpstreamState
 	ttl            time.Duration
 	activeTTL      time.Duration
 	subscribers    []*subscription
@@ -42,6 +44,7 @@ func NewStore(ctx context.Context, ttl, activeTTL time.Duration) *Store {
 	ctx, cancel := context.WithCancel(ctx)
 	s := &Store{
 		tasks:       make(map[string]*models.TaskState),
+		upstreams:   make(map[string]*models.UpstreamState),
 		ttl:         ttl,
 		activeTTL:   activeTTL,
 		subscribers: make([]*subscription, 0),
@@ -104,15 +107,32 @@ func (s *Store) Update(ev *models.MetricEvent) bool {
 	return emitSSE
 }
 
+// ensureTask returns the task state for the event, creating it when needed.
+func (s *Store) ensureTask(ev *models.MetricEvent, key, phase string) *models.TaskState {
+	state, ok := s.tasks[key]
+	if !ok {
+		state = &models.TaskState{
+			Upstream:  ev.Upstream,
+			Slot:      ev.Slot,
+			Task:      ev.Task,
+			Phase:     phase,
+			UpdatedAt: ev.Timestamp,
+		}
+		s.tasks[key] = state
+	}
+	return state
+}
+
 func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := models.TaskKey(ev.Slot, ev.Task)
+	key := models.StoreKey(ev.Upstream, ev.Slot, ev.Task)
 
 	switch ev.Type {
 	case "task_started":
 		s.tasks[key] = &models.TaskState{
+			Upstream:  ev.Upstream,
 			Slot:      ev.Slot,
 			Task:      ev.Task,
 			Phase:     "prefill",
@@ -122,16 +142,7 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return true
 
 	case "prefill_progress":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "prefill",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "prefill")
 		state.Phase = "prefill"
 		state.PromptTokens = ev.PromptTokens
 		state.Progress = ev.Progress
@@ -141,16 +152,7 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return true
 
 	case "generation_progress":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "generation",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "generation")
 		state.GeneratedTokens = ev.GeneratedTokens
 		state.GenerationTPS = ev.GenerationTPS
 		state.GenerationTPS3s = ev.GenerationTPS3s
@@ -163,32 +165,14 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return true
 
 	case "generation_complete":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "generation",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "generation")
 		state.GeneratedTokens = ev.GeneratedTokens
 		state.GenerationTPS = ev.GenerationTPS
 		state.UpdatedAt = ev.Timestamp
 		return true
 
 	case "task_finished":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "finished",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "finished")
 		state.Finished = true
 		state.Truncated = ev.Truncated
 		state.UpdatedAt = ev.Timestamp
@@ -196,7 +180,7 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 
 	case "task_cancelled":
 		for k, st := range s.tasks {
-			if st.Task == ev.Task {
+			if st.Task == ev.Task && st.Upstream == ev.Upstream {
 				st.Cancelled = true
 				st.Finished = true
 				st.UpdatedAt = ev.Timestamp
@@ -207,16 +191,7 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return true
 
 	case "prompt_eval_result":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "prefill",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "prefill")
 		state.PromptEvalMs = ev.PromptEvalMs
 		if ev.PromptTokens > 0 {
 			state.PromptTokens = ev.PromptTokens
@@ -226,45 +201,20 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return false
 
 	case "total_result":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "")
 		state.TotalMs = ev.TotalMs
 		state.TotalTokens = ev.TotalTokens
 		state.UpdatedAt = ev.Timestamp
 		return true
 
 	case "graphs_reused":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "")
 		state.GraphsReused = ev.GraphsReused
 		state.UpdatedAt = ev.Timestamp
 		return false
 
 	case "slot_selected":
-		state, ok := s.tasks[key]
-		if !ok {
-			state = &models.TaskState{
-				Slot:      ev.Slot,
-				Task:      ev.Task,
-				Phase:     "prefill",
-				UpdatedAt: ev.Timestamp,
-			}
-			s.tasks[key] = state
-		}
+		state := s.ensureTask(ev, key, "prefill")
 		state.Keep = ev.Keep
 		state.UpdatedAt = ev.Timestamp
 		s.currentTaskKey = key
@@ -274,10 +224,33 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 	return false
 }
 
+// UpdateUpstream replaces the state of a polled engine and broadcasts an
+// upstream_state SSE event.
+func (s *Store) UpdateUpstream(us *models.UpstreamState) {
+	s.mu.Lock()
+	s.upstreams[us.Upstream] = us
+	s.mu.Unlock()
+
+	s.broadcast(&models.MetricEvent{
+		Type:          "upstream_state",
+		Upstream:      us.Upstream,
+		UpstreamState: us,
+		Timestamp:     us.UpdatedAt,
+	})
+}
+
+// RemoveUpstream forgets a polled engine (e.g. it was unloaded).
+func (s *Store) RemoveUpstream(name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.upstreams, name)
+}
+
 type Snapshot struct {
-	Active      bool                `json:"active"`
-	CurrentTask *models.TaskState   `json:"current_task,omitempty"`
-	Tasks       []*models.TaskState `json:"tasks"`
+	Active      bool                     `json:"active"`
+	CurrentTask *models.TaskState        `json:"current_task,omitempty"`
+	Tasks       []*models.TaskState      `json:"tasks"`
+	Upstreams   []*models.UpstreamState  `json:"upstreams"`
 }
 
 func (s *Store) CurrentSnapshot() Snapshot {
@@ -285,8 +258,9 @@ func (s *Store) CurrentSnapshot() Snapshot {
 	defer s.mu.RUnlock()
 
 	snapshot := Snapshot{
-		Active: false,
-		Tasks:  make([]*models.TaskState, 0, len(s.tasks)),
+		Active:    false,
+		Tasks:     make([]*models.TaskState, 0, len(s.tasks)),
+		Upstreams: make([]*models.UpstreamState, 0, len(s.upstreams)),
 	}
 
 	if ct, ok := s.tasks[s.currentTaskKey]; ok && ct != nil {
@@ -297,6 +271,15 @@ func (s *Store) CurrentSnapshot() Snapshot {
 	for _, st := range s.tasks {
 		snapshot.Tasks = append(snapshot.Tasks, cloneState(st))
 	}
+
+	for _, us := range s.upstreams {
+		c := *us
+		snapshot.Upstreams = append(snapshot.Upstreams, &c)
+	}
+
+	sort.Slice(snapshot.Upstreams, func(i, j int) bool {
+		return snapshot.Upstreams[i].Upstream < snapshot.Upstreams[j].Upstream
+	})
 
 	return snapshot
 }
@@ -337,6 +320,12 @@ func (s *Store) cleanup() {
 		}
 		if now.Sub(st.UpdatedAt) > ttl {
 			delete(s.tasks, key)
+		}
+	}
+
+	for key, us := range s.upstreams {
+		if now.Sub(us.UpdatedAt) > s.ttl {
+			delete(s.upstreams, key)
 		}
 	}
 }

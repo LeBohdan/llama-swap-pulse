@@ -21,6 +21,12 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Logging.Level != "info" {
 		t.Errorf("expected level info, got %s", cfg.Logging.Level)
 	}
+	if cfg.Poll.Interval != time.Second {
+		t.Errorf("expected poll interval 1s, got %v", cfg.Poll.Interval)
+	}
+	if cfg.Poll.DiscoveryInterval != 5*time.Second {
+		t.Errorf("expected discovery interval 5s, got %v", cfg.Poll.DiscoveryInterval)
+	}
 	if cfg.MetricsTTL != 60*time.Second {
 		t.Errorf("expected ttl 60s, got %v", cfg.MetricsTTL)
 	}
@@ -42,6 +48,10 @@ func TestLoadConfigFromFile(t *testing.T) {
  metrics:
   ttl: 120s
   active_ttl: 20m
+
+ poll:
+  interval: 2s
+  discovery_interval: 10s
 `
 	tmpFile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
@@ -73,6 +83,12 @@ func TestLoadConfigFromFile(t *testing.T) {
 	}
 	if cfg.MetricsActiveTTL != 20*time.Minute {
 		t.Errorf("expected activeTTL 20m, got %v", cfg.MetricsActiveTTL)
+	}
+	if cfg.Poll.Interval != 2*time.Second {
+		t.Errorf("expected poll interval 2s, got %v", cfg.Poll.Interval)
+	}
+	if cfg.Poll.DiscoveryInterval != 10*time.Second {
+		t.Errorf("expected discovery interval 10s, got %v", cfg.Poll.DiscoveryInterval)
 	}
 }
 

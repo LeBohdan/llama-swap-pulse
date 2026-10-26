@@ -13,6 +13,8 @@ Environment=LLAMA_SWAP_URL=http://localhost:8080
 Environment=LOGGING_LEVEL=info
 Environment=METRICS_TTL=60s
 Environment=METRICS_ACTIVE_TTL=10m
+Environment=POLL_INTERVAL=1s
+Environment=POLL_DISCOVERY_INTERVAL=5s
 
 StandardOutput=journal
 StandardError=journal

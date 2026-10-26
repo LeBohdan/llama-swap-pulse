@@ -10,6 +10,9 @@ import (
 )
 
 type TaskState struct {
+	// Upstream is set for tasks from polled engines (Strata/Maya);
+	// empty for llama.cpp slot tasks.
+	Upstream         string    `json:"upstream,omitempty"`
 	Slot             int       `json:"slot"`
 	Task             int       `json:"task"`
 	Phase            string    `json:"phase"`
@@ -34,6 +37,15 @@ func TaskKey(slot, task int) string {
 	return fmt.Sprintf("%d:%d", slot, task)
 }
 
+// StoreKey builds the task map key. Tasks from polled engines (Strata/Maya)
+// use synthetic slot ids, so the upstream name is prefixed to keep keys unique.
+func StoreKey(upstream string, slot, task int) string {
+	if upstream != "" {
+		return upstream + "|" + TaskKey(slot, task)
+	}
+	return TaskKey(slot, task)
+}
+
 func (ts *TaskState) Key() string {
-	return TaskKey(ts.Slot, ts.Task)
+	return StoreKey(ts.Upstream, ts.Slot, ts.Task)
 }

@@ -16,6 +16,7 @@ type Config struct {
 	Server           ServerConfig
 	LlamaSwap        LlamaSwapConfig
 	Logging          LoggingConfig
+	Poll             PollConfig
 	MetricsTTL       time.Duration
 	MetricsActiveTTL time.Duration
 }
@@ -32,6 +33,13 @@ type LoggingConfig struct {
 	Level string
 }
 
+// PollConfig controls how often Strata/Maya engine /metrics endpoints are
+// polled and how often loaded upstreams are rediscovered.
+type PollConfig struct {
+	Interval          time.Duration
+	DiscoveryInterval time.Duration
+}
+
 func DefaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
@@ -42,6 +50,10 @@ func DefaultConfig() Config {
 		},
 		Logging: LoggingConfig{
 			Level: "info",
+		},
+		Poll: PollConfig{
+			Interval:          time.Second,
+			DiscoveryInterval: 5 * time.Second,
 		},
 		MetricsTTL:       60 * time.Second,
 		MetricsActiveTTL: 10 * time.Minute,
@@ -125,6 +137,20 @@ func parseFile(path string, cfg *Config) error {
 					cfg.MetricsActiveTTL = d
 				}
 			}
+		case "poll":
+			currentSection = "poll"
+		case "interval":
+			if currentSection == "poll" {
+				if d, err := time.ParseDuration(val); err == nil {
+					cfg.Poll.Interval = d
+				}
+			}
+		case "discovery_interval":
+			if currentSection == "poll" {
+				if d, err := time.ParseDuration(val); err == nil {
+					cfg.Poll.DiscoveryInterval = d
+				}
+			}
 		}
 	}
 
@@ -161,6 +187,16 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("METRICS_ACTIVE_TTL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.MetricsActiveTTL = d
+		}
+	}
+	if v := os.Getenv("POLL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Poll.Interval = d
+		}
+	}
+	if v := os.Getenv("POLL_DISCOVERY_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Poll.DiscoveryInterval = d
 		}
 	}
 }

@@ -9,6 +9,10 @@ import "time"
 type MetricEvent struct {
 	Type string `json:"type"`
 
+	// Upstream is set for events coming from polled engines (Strata/Maya);
+	// empty for llama.cpp log-derived events.
+	Upstream string `json:"upstream,omitempty"`
+
 	Slot int `json:"slot"`
 	Task int `json:"task"`
 
@@ -31,6 +35,9 @@ type MetricEvent struct {
 	GraphsReused int `json:"graphs_reused,omitempty"`
 	Truncated    int `json:"truncated,omitempty"`
 	NTokens      int `json:"n_tokens,omitempty"`
+
+	// UpstreamState is set on upstream_state events for polled engines.
+	UpstreamState *UpstreamState `json:"upstream_state,omitempty"`
 
 	Timestamp time.Time `json:"timestamp"`
 }

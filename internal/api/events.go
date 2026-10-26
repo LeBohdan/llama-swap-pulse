@@ -14,6 +14,7 @@ const (
 	EventGenerationComplete  = "generation_complete"
 	EventTaskFinished        = "task_finished"
 	EventTaskCancelled       = "task_cancelled"
+	EventUpstreamState       = "upstream_state"
 )
 
 // Internal-only event types (not emitted over SSE).

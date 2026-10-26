@@ -4,7 +4,7 @@ GitHub: https://github.com/LeBohdan -->
 
 # llama-swap-pulse
 
-Version: 1.4
+Version: 1.5
 
 A standalone telemetry bridge between `llama-swap` and external clients such as OpenCode plugins.
 
@@ -12,10 +12,19 @@ A standalone telemetry bridge between `llama-swap` and external clients such as 
 
 The service connects to `llama-swap`'s live upstream logs, parses `llama.cpp` runtime timing information, converts raw log lines into structured real-time metrics, and exposes clean APIs for consumers.
 
+For **Strata** and **project-maya** engines it additionally discovers loaded
+upstream models automatically and polls their web-UI `/metrics` endpoint, so
+prefill/generation progress and hardware telemetry are available for those
+engines too — no manual model configuration, no log parsing.
+
 ## Features
 
 - Connects to `llama-swap` log stream (`/logs/stream/upstream`)
 - Parses llama.cpp timing messages in real-time
+- Auto-discovers Strata/Maya upstreams via llama-swap `/v1/models` and polls
+  their `/metrics` endpoint (`poll.interval`, default 1s)
+- Emits per-upstream state events (`upstream_state`): engine state, phase,
+  queue depth, GPU/RAM/CPU telemetry
 - Maintains current inference state (active tasks, progress, TPS)
 - Provides real-time SSE streaming metrics (`/pulse/live`)
 - Provides current snapshot API (`/pulse/metrics`)
@@ -49,15 +58,27 @@ llama_swap:
 
 logging:
   level: info
+
+metrics:
+  ttl: 60s
+  active_ttl: 10m
+
+poll:
+  interval: 1s
+  discovery_interval: 5s
 ```
 
 Environment variable overrides:
 
-| Variable        | Description       | Default               |
-|-----------------|-------------------|-----------------------|
-| `SERVER_LISTEN` | HTTP listen addr  | `:8090`               |
-| `LLAMA_SWAP_URL`| llama-swap base URL| `http://localhost:8080`|
-| `LOGGING_LEVEL` | Log level         | `info`                |
+| Variable                  | Description                     | Default                 |
+|---------------------------|---------------------------------|-------------------------|
+| `SERVER_LISTEN`           | HTTP listen addr                | `:8090`                 |
+| `LLAMA_SWAP_URL`          | llama-swap base URL             | `http://localhost:8080` |
+| `LOGGING_LEVEL`           | Log level                       | `info`                  |
+| `METRICS_TTL`             | Finished-task retention         | `60s`                   |
+| `METRICS_ACTIVE_TTL`      | Active-task inactivity limit    | `10m`                   |
+| `POLL_INTERVAL`           | Engine `/metrics` poll interval | `1s`                    |
+| `POLL_DISCOVERY_INTERVAL` | Upstream rediscovery interval   | `5s`                    |
 
 ## API
 
@@ -70,7 +91,7 @@ Quick reference:
 | Endpoint | Description |
 |----------|-------------|
 | `GET /pulse/health` | Health check (`200` connected, `503` disconnected) |
-| `GET /pulse/metrics` | Current task snapshot (JSON) |
+| `GET /pulse/metrics` | Current task + upstream snapshot (JSON) |
 | `GET /pulse/live` | Real-time SSE event stream |
 
 ## Building

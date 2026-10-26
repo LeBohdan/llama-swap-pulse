@@ -15,6 +15,7 @@ import (
 
 	"llama-swap-pulse/internal/api"
 	"llama-swap-pulse/internal/config"
+	"llama-swap-pulse/internal/engine"
 	"llama-swap-pulse/internal/llama"
 	"llama-swap-pulse/internal/metrics"
 	"llama-swap-pulse/internal/parser"
@@ -59,6 +60,9 @@ func main() {
 		store.Update(ev)
 	})
 
+	engineMgr := engine.NewManager(cfg.LlamaSwap.URL, store, cfg.Poll.Interval, cfg.Poll.DiscoveryInterval, log)
+	engineMgr.Start(ctx)
+
 	if err := stream.Start(); err != nil {
 		log.Error("failed to start stream", "err", err)
 		os.Exit(1)
@@ -85,6 +89,7 @@ func main() {
 	if waiter, ok := stream.(llama.Waiter); ok {
 		waiter.Wait()
 	}
+	engineMgr.Stop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
