@@ -2,8 +2,10 @@
 // Website: https://www.bf.com.ua
 // GitHub: https://github.com/LeBohdan
 
-// Package engine discovers Strata/Maya upstreams behind llama-swap and
-// polls their web-UI /metrics endpoint for live prefill/generation metrics.
+// Package engine discovers Strata/Maya upstreams behind llama-swap and polls
+// their web-UI /metrics endpoint directly (on the engine's own port) for live
+// prefill/generation metrics. It never routes through llama-swap's
+// /upstream/... proxy because that proxy (re)starts non-ready processes.
 package engine
 
 import (
@@ -18,7 +20,9 @@ import (
 )
 
 // Manager keeps one poller goroutine per loaded Strata/Maya upstream and a
-// discovery loop that tracks llama-swap's model list automatically.
+// discovery loop that tracks llama-swap's running-process list automatically.
+// All engine traffic is direct (engine port), never through llama-swap's
+// /upstream/... proxy, which would (re)start processes that are stopping.
 type Manager struct {
 	client  *Client
 	store   *metrics.Store
@@ -32,8 +36,9 @@ type Manager struct {
 
 	slotSeq atomic.Int64
 
-	mu      sync.Mutex
-	pollers map[string]*poller
+	mu         sync.Mutex
+	pollers    map[string]*poller
+	warnedNoURL map[string]bool
 }
 
 // poller owns the per-upstream task state machine. Its state fields are only
@@ -41,6 +46,7 @@ type Manager struct {
 type poller struct {
 	id     string
 	engine string
+	base   string // engine direct base URL (never the swap proxy)
 	slot   int
 	cancel context.CancelFunc
 
@@ -52,7 +58,13 @@ type poller struct {
 	lastGenTPS float64
 	reading    bool // saw "reading" for the current task
 	lastReadMs float64
+	fails      int // consecutive /metrics failures
 }
+
+// maxPollFails stops a poller after this many consecutive direct /metrics
+// errors (engine crashed or port changed) instead of hammering a dead port
+// until the next discovery tick.
+const maxPollFails = 3
 
 func NewManager(baseURL string, store *metrics.Store, poll, discovery time.Duration, log *slog.Logger) *Manager {
 	if poll <= 0 {
@@ -62,12 +74,13 @@ func NewManager(baseURL string, store *metrics.Store, poll, discovery time.Durat
 		discovery = 5 * time.Second
 	}
 	return &Manager{
-		client:    NewClient(baseURL),
-		store:     store,
-		log:       log,
-		poll:      poll,
-		discEvery: discovery,
-		pollers:   make(map[string]*poller),
+		client:      NewClient(baseURL),
+		store:       store,
+		log:         log,
+		poll:        poll,
+		discEvery:   discovery,
+		pollers:     make(map[string]*poller),
+		warnedNoURL: make(map[string]bool),
 	}
 }
 
@@ -102,48 +115,58 @@ func (m *Manager) discoveryLoop() {
 }
 
 func (m *Manager) discover() {
-	list, err := m.client.ListModels(m.ctx)
+	list, err := m.client.ListRunning(m.ctx)
 	if err != nil {
 		m.log.Debug("engine discovery failed", "err", err)
 		return
 	}
 
-	loaded := make(map[string]bool, len(list))
-	for _, mdl := range list {
-		loaded[mdl.ID] = mdl.Loaded
+	ready := make(map[string]RunningModel, len(list))
+	for _, rm := range list {
+		if rm.State == ProcessStateReady {
+			ready[rm.ID] = rm
+		}
 	}
 
 	m.mu.Lock()
-	// Stop pollers for models llama-swap no longer reports as loaded.
+	// Stop pollers for models llama-swap no longer reports as running ready.
 	for id, p := range m.pollers {
-		if !loaded[id] {
+		if _, ok := ready[id]; !ok {
 			p.cancel()
 			delete(m.pollers, id)
 		}
 	}
 
-	// Start pollers for newly loaded Strata/Maya engines. Probing only
-	// loaded models avoids waking unloaded engines.
-	for id, ok := range loaded {
-		if !ok {
-			continue
-		}
+	// Start pollers for newly ready Strata/Maya engines. Probing only ready
+	// models and never via the /upstream proxy avoids waking or restarting
+	// engines llama-swap is stopping.
+	for id, rm := range ready {
 		if _, exists := m.pollers[id]; exists {
 			continue
 		}
-		kind, err := m.client.Probe(m.ctx, id)
+		base := m.client.EngineURL(rm)
+		if base == "" {
+			if !m.warnedNoURL[id] {
+				m.log.Warn("cannot resolve engine direct URL (no proxy and no literal port in cmd); staying log-only", "upstream", id)
+				m.warnedNoURL[id] = true
+			}
+			continue
+		}
+		delete(m.warnedNoURL, id)
+		kind, err := m.client.Probe(m.ctx, id, base)
 		if err != nil || (kind != models.EngineStrata && kind != models.EngineMaya) {
 			continue
 		}
-		m.startPoller(id, kind)
+		m.startPoller(id, kind, base)
 	}
 	m.mu.Unlock()
 }
 
-func (m *Manager) startPoller(id, kind string) {
+func (m *Manager) startPoller(id, kind, base string) {
 	p := &poller{
 		id:     id,
 		engine: kind,
+		base:   base,
 		slot:   int(m.slotSeq.Add(1)),
 	}
 	pctx, cancel := context.WithCancel(m.ctx)
@@ -155,30 +178,44 @@ func (m *Manager) startPoller(id, kind string) {
 		defer m.wg.Done()
 		m.pollLoop(pctx, p)
 	}()
-	m.log.Info("engine poller started", "upstream", id, "engine", kind)
+	m.log.Info("engine poller started", "upstream", id, "engine", kind, "url", base)
 }
 
 func (m *Manager) pollLoop(ctx context.Context, p *poller) {
 	ticker := time.NewTicker(m.poll)
 	defer ticker.Stop()
 
+	// Closing the in-flight task here keeps task lifecycle complete for every
+	// exit path: model unload, repeated metrics failures, manager stop.
+	defer func() {
+		m.completeTask(p)
+		m.store.RemoveUpstream(p.id)
+		m.client.ForgetProbe(p.id)
+		m.log.Info("engine poller stopped", "upstream", p.id)
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
-			// Closing the in-flight task here keeps task lifecycle complete
-			// both when a model unloads and when the manager stops.
-			m.completeTask(p)
-			m.store.RemoveUpstream(p.id)
-			m.log.Info("engine poller stopped", "upstream", p.id)
 			return
 		case <-ticker.C:
 		}
 
-		mx, err := m.client.FetchMetrics(ctx, p.id)
+		mx, err := m.client.FetchMetrics(ctx, p.base)
 		if err != nil {
+			if ctx.Err() != nil {
+				return // manager shutting down, not an engine failure
+			}
+			p.fails++
+			if p.fails >= maxPollFails {
+				m.log.Warn("engine poller stopping after repeated metrics failures",
+					"upstream", p.id, "err", err)
+				return
+			}
 			m.log.Debug("engine metrics failed", "upstream", p.id, "err", err)
 			continue
 		}
+		p.fails = 0
 
 		m.store.UpdateUpstream(upstreamState(p, mx))
 		m.drive(p, mx.Live)

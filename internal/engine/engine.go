@@ -9,32 +9,136 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"llama-swap-pulse/internal/models"
 )
 
-// Model is one upstream model known to llama-swap.
-type Model struct {
-	ID     string
-	Loaded bool
+// ProcessStateReady is llama-swap's /running state for a live, healthy
+// upstream process. Only models in this state may be polled.
+const ProcessStateReady = "ready"
+
+// RunningModel is one non-stopped process reported by llama-swap GET /running.
+// Proxy and Cmd carry the model config as written (llama-swap does not
+// resolve ${PORT} there), which is what engineBaseURL parses.
+type RunningModel struct {
+	ID    string
+	State string
+	Proxy string
+	Cmd   string
 }
 
-// Client talks to the llama-swap HTTP API and to the proxied upstream
-// engines (Strata/Maya web-UI endpoints under /upstream/<id>/...).
+// engineBaseURL derives the engine's direct HTTP base URL from llama-swap's
+// /running entry. Polling engines directly (instead of through
+// <swap>/upstream/<id>/...) is mandatory: the /upstream route runs through
+// llama-swap's swap logic and (re)starts models that are stopping or stopped,
+// causing reload loops and keeping model ttl from ever expiring.
+//
+// The engine lives on the same machine as llama-swap, so loopback/unspecified
+// hosts (localhost, 127.0.0.1, 0.0.0.0, ...) in proxy:/cmd are rewritten to
+// swapHost — the host of the configured llama-swap URL. That keeps direct
+// polling working when pulse runs on a different machine than the swap.
+//
+// Returns "" when no direct address is observable (no proxy: entry and no
+// literal port in cmd, e.g. cmd uses ${PORT}); such engines stay log-only.
+func engineBaseURL(rm RunningModel, swapHost string) string {
+	if p := strings.TrimSpace(rm.Proxy); p != "" {
+		return rewriteProxyURL(p, swapHost)
+	}
+
+	var port, host string
+	fields := strings.Fields(rm.Cmd) // cmd may embed newlines between args
+	for i := 0; i < len(fields); i++ {
+		name, val, hasVal := strings.Cut(fields[i], "=")
+		if !hasVal && name != "--port" && name != "-port" && name != "--host" && name != "-host" {
+			continue
+		}
+		if !hasVal {
+			if i+1 >= len(fields) {
+				continue
+			}
+			i++
+			val = fields[i]
+		}
+		switch name {
+		case "--port", "-port":
+			port = val
+		case "--host", "-host":
+			host = val
+		}
+	}
+
+	if !allDigits(port) { // empty, ${PORT}, or anything non-numeric
+		return ""
+	}
+	if isLocalHost(host) {
+		host = outboundHost(swapHost)
+	}
+	return "http://" + host + ":" + port
+}
+
+// rewriteProxyURL normalizes a proxy: URL from llama-swap model config,
+// substituting its loopback host with swapHost. Malformed values are passed
+// through trimmed of the trailing slash.
+func rewriteProxyURL(p, swapHost string) string {
+	u, err := url.Parse(strings.TrimRight(p, "/"))
+	if err != nil || u.Host == "" {
+		return strings.TrimRight(p, "/")
+	}
+	if isLocalHost(u.Hostname()) {
+		u.Host = net.JoinHostPort(outboundHost(swapHost), u.Port())
+	}
+	return u.String()
+}
+
+// isLocalHost reports hosts that only reach the machine llama-swap runs on.
+func isLocalHost(host string) bool {
+	switch host {
+	case "", "*", "0.0.0.0", "::", "[::]", "::1", "[::1]", "localhost", "127.0.0.1":
+		return true
+	}
+	return false
+}
+
+// outboundHost is the host to dial for loopback engine addresses: the
+// llama-swap host itself, or localhost when the swap is local too.
+func outboundHost(swapHost string) string {
+	if swapHost == "" || isLocalHost(swapHost) {
+		return "localhost"
+	}
+	return swapHost
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// Client talks to the llama-swap HTTP API and (for engine metrics) directly
+// to the upstream engine processes on their own ports.
 type Client struct {
-	baseURL string
-	http    *http.Client
+	baseURL  string
+	swapHost string // host part of baseURL, for loopback engine URL rewrites
+	http     *http.Client
 
 	mu     sync.Mutex
 	probes map[string]string
 }
 
 func NewClient(baseURL string) *Client {
-	return &Client{
+	c := &Client{
 		baseURL: baseURL,
 		http: &http.Client{
 			Timeout:   5 * time.Second,
@@ -42,10 +146,26 @@ func NewClient(baseURL string) *Client {
 		},
 		probes: make(map[string]string),
 	}
+	if u, err := url.Parse(baseURL); err == nil {
+		c.swapHost = u.Hostname()
+	}
+	return c
 }
 
-func (c *Client) getJSON(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+// EngineURL resolves the direct base URL for a running model entry.
+func (c *Client) EngineURL(rm RunningModel) string {
+	return engineBaseURL(rm, c.swapHost)
+}
+
+// swapGetJSON fetches a llama-swap API endpoint (relative path against the
+// configured swap base URL).
+func (c *Client) swapGetJSON(ctx context.Context, path string, out any) error {
+	return c.getJSON(ctx, c.baseURL+path, out)
+}
+
+// getJSON fetches and decodes an absolute URL.
+func (c *Client) getJSON(ctx context.Context, url string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
@@ -55,7 +175,7 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: status %d", path, resp.StatusCode)
+		return fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
@@ -64,40 +184,36 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 	return json.Unmarshal(body, out)
 }
 
-// ListModels returns all models configured in llama-swap along with their
-// loaded state (auto-discovery, no manual configuration needed).
-func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
+// ListRunning returns the models llama-swap currently has running (in any
+// non-stopped state) along with their process state and config text. This
+// endpoint never triggers a swap, unlike the /upstream/... proxy.
+func (c *Client) ListRunning(ctx context.Context) ([]RunningModel, error) {
 	var payload struct {
-		Data []struct {
-			ID     string `json:"id"`
-			Status struct {
-				Value string `json:"value"`
-			} `json:"status"`
-		} `json:"data"`
+		Running []struct {
+			Model string `json:"model"`
+			State string `json:"state"`
+			Proxy string `json:"proxy"`
+			Cmd   string `json:"cmd"`
+		} `json:"running"`
 	}
-	if err := c.getJSON(ctx, "/v1/models", &payload); err != nil {
+	if err := c.swapGetJSON(ctx, "/running", &payload); err != nil {
 		return nil, err
 	}
-	models := make([]Model, 0, len(payload.Data))
-	for _, m := range payload.Data {
-		if m.ID == "" {
+	list := make([]RunningModel, 0, len(payload.Running))
+	for _, m := range payload.Running {
+		if m.Model == "" {
 			continue
 		}
-		models = append(models, Model{ID: m.ID, Loaded: m.Status.Value == "loaded"})
+		list = append(list, RunningModel{ID: m.Model, State: m.State, Proxy: m.Proxy, Cmd: m.Cmd})
 	}
-	return models, nil
+	return list, nil
 }
 
-// upstreamPath escapes the upstream id for the llama-swap proxy route.
-func upstreamPath(id string) string {
-	return "/upstream/" + url.PathEscape(id)
-}
-
-// Probe classifies an upstream engine by its /health payload. The "service"
+// Probe classifies an engine by its direct /health payload. The "service"
 // field is present only for Strata ("strata") and Maya ("maya"); llama.cpp
-// has no web-UI health endpoint with that field, so it maps to llamacpp.
+// has no web-UI health endpoint with that field, so it maps to unknown.
 // Unknown results are not cached so they are retried on the next cycle.
-func (c *Client) Probe(ctx context.Context, id string) (string, error) {
+func (c *Client) Probe(ctx context.Context, id, baseURL string) (string, error) {
 	c.mu.Lock()
 	if eng, ok := c.probes[id]; ok {
 		c.mu.Unlock()
@@ -108,7 +224,7 @@ func (c *Client) Probe(ctx context.Context, id string) (string, error) {
 	var health struct {
 		Service string `json:"service"`
 	}
-	if err := c.getJSON(ctx, upstreamPath(id)+"/health", &health); err != nil {
+	if err := c.getJSON(ctx, baseURL+"/health", &health); err != nil {
 		return models.EngineUnknown, err
 	}
 
@@ -137,10 +253,11 @@ func (c *Client) ForgetProbe(id string) {
 }
 
 // FetchMetrics reads the current engine metrics snapshot (live state,
-// hardware telemetry). The requests history is ignored.
-func (c *Client) FetchMetrics(ctx context.Context, id string) (*Metrics, error) {
+// hardware telemetry) directly from the engine. The requests history is
+// ignored.
+func (c *Client) FetchMetrics(ctx context.Context, baseURL string) (*Metrics, error) {
 	var m Metrics
-	if err := c.getJSON(ctx, upstreamPath(id)+"/metrics", &m); err != nil {
+	if err := c.getJSON(ctx, baseURL+"/metrics", &m); err != nil {
 		return nil, err
 	}
 	return &m, nil

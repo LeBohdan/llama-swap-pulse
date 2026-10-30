@@ -5,4 +5,4 @@
 package version
 
 // Version is the current version of the service.
-var Version = "1.5"
+var Version = "1.6"
