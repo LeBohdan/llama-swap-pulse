@@ -116,6 +116,9 @@ func TestProbeClassification(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "loaded": true, "service": "strata"})
 		case "/maya/health":
 			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "loaded": true, "service": "maya"})
+		case "/maya-legacy/health":
+			// Current Maya builds report no "service" field at all.
+			json.NewEncoder(w).Encode(map[string]any{"status": "ok", "loaded": true, "version": "0.4.1", "model_label": "Qwen3-8B"})
 		case "/plain/health":
 			json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
 		default:
@@ -132,6 +135,9 @@ func TestProbeClassification(t *testing.T) {
 	}
 	if kind, err := c.Probe(ctx, "Maya-M", srv.URL+"/maya"); err != nil || kind != models.EngineMaya {
 		t.Errorf("maya probe: kind=%s err=%v", kind, err)
+	}
+	if kind, err := c.Probe(ctx, "MayaLegacy-M", srv.URL+"/maya-legacy"); err != nil || kind != models.EngineMaya {
+		t.Errorf("maya probe without service field: kind=%s err=%v", kind, err)
 	}
 	kind, err := c.Probe(ctx, "LLAMA-M", srv.URL+"/plain")
 	if kind != models.EngineUnknown || err != nil {

@@ -116,7 +116,7 @@ Returns current state of all tracked tasks.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `upstream` | `string` | Upstream model name for tasks from polled engines (Strata/Maya); omitted for llama.cpp tasks |
+| `upstream` | `string` | Model name — present for all tasks (polled engines and llama.cpp slot tasks) |
 | `slot` | `int` | Slot index (llama.cpp), or synthetic per-upstream id (Strata/Maya, prefixed by `upstream`) |
 | `task` | `int` | Task ID (llama.cpp), or per-upstream task counter (Strata/Maya) |
 | `phase` | `string` | Current phase: `prefill`, `generation`, or `finished` |
@@ -174,8 +174,9 @@ Returns current state of all tracked tasks.
 
 `GET /pulse/live`
 
-Server-Sent Events stream. Emits events derived from llama-swap logs
-(llama.cpp) and from polled engine `/metrics` snapshots (Strata/Maya).
+Server-Sent Events stream. Emits events derived from llama-swap per-model log
+streams (`/logs/stream/{model_id}`, llama.cpp) and from polled engine
+`/metrics` snapshots (Strata/Maya).
 
 ### Headers
 
@@ -215,10 +216,12 @@ Finished or cancelled tasks are removed from the snapshot after **60s** (configu
 
 Task lifecycle events (`task_started`, `prefill_progress`, `generation_progress`,
 `generation_complete`, `task_finished`) are emitted both for llama.cpp (parsed
-from logs) and for polled Strata/Maya engines. Events from polled engines carry
-an `upstream` field; llama.cpp events do not. The llama.cpp-only events
-(`slot_selected`, `task_cancelled`) and the polled-engine-only `upstream_state`
-are documented below.
+from per-model log streams) and for polled Strata/Maya engines. All events
+carry an `upstream` field (the model name): polled engines report it directly,
+llama.cpp events get it from the model's own log stream, so tasks from two
+different models with identical slot/task ids never collide. The
+llama.cpp-only events (`slot_selected`, `task_cancelled`) and the
+polled-engine-only `upstream_state` are documented below.
 
 ### `slot_selected`
 
@@ -360,7 +363,7 @@ All events share this struct. Fields marked `omitempty` may be absent depending 
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `string` | Event type (see above) |
-| `upstream` | `string` | Upstream model name for polled-engine events; omitted for llama.cpp events |
+| `upstream` | `string` | Model name — present for all events (polled engines and llama.cpp log events) |
 | `slot` | `int` | Slot index (synthetic for polled engines) |
 | `task` | `int` | Task ID (per-upstream counter for polled engines) |
 | `phase` | `string` | Phase (present for `task_started`) |

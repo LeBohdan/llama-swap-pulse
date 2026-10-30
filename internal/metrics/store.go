@@ -179,14 +179,30 @@ func (s *Store) applyEvent(ev *models.MetricEvent) bool {
 		return true
 
 	case "task_cancelled":
+		// The srv line itself has no model tag; the per-model stream supplies
+		// ev.Upstream. Prefer a task in the same upstream, then fall back to
+		// a task-id-only match (e.g. a stray or delayed line).
+		key := ""
 		for k, st := range s.tasks {
 			if st.Task == ev.Task && st.Upstream == ev.Upstream {
-				st.Cancelled = true
-				st.Finished = true
-				st.UpdatedAt = ev.Timestamp
-				delete(s.tasks, k)
+				key = k
 				break
 			}
+		}
+		if key == "" {
+			for k, st := range s.tasks {
+				if st.Task == ev.Task {
+					key = k
+					break
+				}
+			}
+		}
+		if key != "" {
+			st := s.tasks[key]
+			st.Cancelled = true
+			st.Finished = true
+			st.UpdatedAt = ev.Timestamp
+			delete(s.tasks, key)
 		}
 		return true
 

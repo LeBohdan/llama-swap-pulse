@@ -9,8 +9,8 @@ import "time"
 type MetricEvent struct {
 	Type string `json:"type"`
 
-	// Upstream is set for events coming from polled engines (Strata/Maya);
-	// empty for llama.cpp log-derived events.
+	// Upstream is the model name for every event: polled engines report it
+	// directly, llama.cpp log lines carry it from their per-model stream.
 	Upstream string `json:"upstream,omitempty"`
 
 	Slot int `json:"slot"`

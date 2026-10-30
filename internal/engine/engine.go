@@ -210,8 +210,11 @@ func (c *Client) ListRunning(ctx context.Context) ([]RunningModel, error) {
 }
 
 // Probe classifies an engine by its direct /health payload. The "service"
-// field is present only for Strata ("strata") and Maya ("maya"); llama.cpp
-// has no web-UI health endpoint with that field, so it maps to unknown.
+// field is present for Strata ("strata") and, once upstream announces
+// itself, Maya ("maya"). Current Maya builds have no "service" field but do
+// report "version", which Strata and llama.cpp /health payloads lack, so a
+// missing "service" with a non-empty "version" falls back to Maya. llama.cpp
+// has no web-UI health endpoint with either field, so it maps to unknown.
 // Unknown results are not cached so they are retried on the next cycle.
 func (c *Client) Probe(ctx context.Context, id, baseURL string) (string, error) {
 	c.mu.Lock()
@@ -223,6 +226,7 @@ func (c *Client) Probe(ctx context.Context, id, baseURL string) (string, error) 
 
 	var health struct {
 		Service string `json:"service"`
+		Version string `json:"version"`
 	}
 	if err := c.getJSON(ctx, baseURL+"/health", &health); err != nil {
 		return models.EngineUnknown, err
@@ -234,6 +238,9 @@ func (c *Client) Probe(ctx context.Context, id, baseURL string) (string, error) 
 	case models.EngineMaya:
 		return c.cacheProbe(id, models.EngineMaya), nil
 	default:
+		if health.Version != "" {
+			return c.cacheProbe(id, models.EngineMaya), nil
+		}
 		return models.EngineUnknown, nil
 	}
 }

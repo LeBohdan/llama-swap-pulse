@@ -10,8 +10,8 @@ import (
 )
 
 type TaskState struct {
-	// Upstream is set for tasks from polled engines (Strata/Maya);
-	// empty for llama.cpp slot tasks.
+	// Upstream is the model name for every task: polled engines (Strata/Maya)
+	// and llama.cpp slot tasks alike (tagged by their per-model log stream).
 	Upstream         string    `json:"upstream,omitempty"`
 	Slot             int       `json:"slot"`
 	Task             int       `json:"task"`

@@ -48,27 +48,28 @@ func main() {
 	store := metrics.NewStore(ctx, cfg.MetricsTTL, cfg.MetricsActiveTTL)
 	p := parser.New()
 
-	stream := llama.NewLogStream(cfg.LlamaSwap.URL, log)
+	engineMgr := engine.NewManager(cfg.LlamaSwap.URL, store, cfg.Poll.Interval, cfg.Poll.DiscoveryInterval, log)
+	engineMgr.Start(ctx)
 
-	connectedChecker, _ := stream.(llama.ConnectedChecker)
+	// One log stream per loaded llama.cpp model; models covered by an engine
+	// poller (Strata/Maya) are skipped so they get exactly one metric source.
+	stream := llama.New(cfg.LlamaSwap.URL, cfg.Poll.DiscoveryInterval, log, engineMgr.PollerIDs)
 
-	stream.Subscribe(func(line string) {
+	stream.Subscribe(func(modelID, line string) {
 		ev, ok := p.ParseLine(line)
 		if !ok {
 			return
 		}
+		ev.Upstream = modelID
 		store.Update(ev)
 	})
 
-	engineMgr := engine.NewManager(cfg.LlamaSwap.URL, store, cfg.Poll.Interval, cfg.Poll.DiscoveryInterval, log)
-	engineMgr.Start(ctx)
-
-	if err := stream.Start(); err != nil {
-		log.Error("failed to start stream", "err", err)
+	if err := stream.Start(ctx); err != nil {
+		log.Error("failed to start stream manager", "err", err)
 		os.Exit(1)
 	}
 
-	server := api.New(cfg.Server.Listen, store, stream, connectedChecker, log)
+	server := api.New(cfg.Server.Listen, store, stream, log)
 
 	if err := server.Start(); err != nil {
 		log.Error("failed to start server", "err", err)
@@ -86,9 +87,7 @@ func main() {
 	}
 
 	stream.Stop()
-	if waiter, ok := stream.(llama.Waiter); ok {
-		waiter.Wait()
-	}
+	stream.Wait()
 	engineMgr.Stop()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)

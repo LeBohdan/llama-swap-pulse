@@ -90,6 +90,19 @@ func (m *Manager) Start(ctx context.Context) {
 	go m.discoveryLoop()
 }
 
+// PollerIDs returns the upstream ids currently handled by an engine poller
+// (Strata/Maya). Consumers (the llama.cpp log stream manager) use it to skip
+// those models, so every model is covered by exactly one metric source.
+func (m *Manager) PollerIDs() map[string]bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := make(map[string]bool, len(m.pollers))
+	for id := range m.pollers {
+		ids[id] = true
+	}
+	return ids
+}
+
 func (m *Manager) Stop() {
 	if m.cancel != nil {
 		m.cancel()

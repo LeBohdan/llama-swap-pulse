@@ -12,27 +12,30 @@ import (
 	"net/http"
 	"sync"
 
-	"llama-swap-pulse/internal/llama"
 	"llama-swap-pulse/internal/metrics"
 	"llama-swap-pulse/internal/models"
 )
 
-type Server struct {
-	addr     string
-	store    *metrics.Store
-	stream   llama.LogStream
-	connected llama.ConnectedChecker
-	log      *slog.Logger
-	mu       sync.Mutex
-	srv      *http.Server
-	errCh    chan error
+// ConnectedChecker reports whether the upstream log source (llama-swap) is
+// reachable.
+type ConnectedChecker interface {
+	Connected() bool
 }
 
-func New(addr string, store *metrics.Store, stream llama.LogStream, connected llama.ConnectedChecker, log *slog.Logger) *Server {
+type Server struct {
+	addr      string
+	store     *metrics.Store
+	connected ConnectedChecker
+	log       *slog.Logger
+	mu        sync.Mutex
+	srv       *http.Server
+	errCh     chan error
+}
+
+func New(addr string, store *metrics.Store, connected ConnectedChecker, log *slog.Logger) *Server {
 	return &Server{
 		addr:      addr,
 		store:     store,
-		stream:    stream,
 		connected: connected,
 		log:       log,
 	}
